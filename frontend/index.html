@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pi Sentinel | Edge NIDS Dashboard</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+            mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    body { background: radial-gradient(1200px 600px at 50% -10%, #0f2a3d 0%, #0b1220 45%, #070b14 100%); }
+    .card { background: rgba(17, 24, 39, 0.75); border: 1px solid rgba(55, 65, 81, 0.6); backdrop-filter: blur(6px); }
+    .pulse-ring { animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite; }
+    @keyframes pulse-ring {
+      0%   { transform: scale(0.8); opacity: 0.8; }
+      80%  { transform: scale(2.2); opacity: 0; }
+      100% { transform: scale(2.2); opacity: 0; }
+    }
+    @keyframes row-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    .row-new { animation: row-in 0.35s ease-out; }
+    .scroll-thin::-webkit-scrollbar { width: 8px; }
+    .scroll-thin::-webkit-scrollbar-track { background: transparent; }
+    .scroll-thin::-webkit-scrollbar-thumb { background: #374151; border-radius: 8px; }
+  </style>
+</head>
+
+<body class="min-h-screen text-gray-200 font-sans antialiased">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- Header -->
+    <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-xl font-semibold text-white tracking-tight">Pi Sentinel</h1>
+          <p class="text-xs text-gray-400">Edge-Based Network Intrusion Detection &middot; Local Dashboard</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span id="storage-badge" class="hidden text-xs font-mono px-2.5 py-1 rounded-md bg-gray-800 border border-gray-700 text-gray-300"></span>
+        <div class="card rounded-full px-4 py-2 flex items-center gap-3">
+          <span class="relative flex h-3 w-3">
+            <span id="conn-ping" class="pulse-ring absolute inline-flex h-full w-full rounded-full bg-gray-500 opacity-75"></span>
+            <span id="conn-dot" class="relative inline-flex rounded-full h-3 w-3 bg-gray-500"></span>
+          </span>
+          <div class="leading-tight">
+            <p id="conn-text" class="text-sm font-medium text-gray-200">Connecting...</p>
+            <p id="conn-sub" class="text-[11px] text-gray-500 font-mono">--</p>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- KPI Cards -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between">
+          <p class="text-xs uppercase tracking-wider text-gray-400">Total Packets</p>
+          <span class="text-cyan-400">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+          </span>
+        </div>
+        <p id="kpi-total" class="mt-3 text-3xl font-semibold text-white font-mono">0</p>
+        <p class="mt-1 text-xs text-gray-500">Metadata records ingested</p>
+      </div>
+
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between">
+          <p class="text-xs uppercase tracking-wider text-gray-400">Active Source IPs</p>
+          <span class="text-violet-400">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+          </span>
+        </div>
+        <p id="kpi-ips" class="mt-3 text-3xl font-semibold text-white font-mono">0</p>
+        <p class="mt-1 text-xs text-gray-500">Unique talkers on the network</p>
+      </div>
+
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between">
+          <p class="text-xs uppercase tracking-wider text-gray-400">Storage Saved</p>
+          <span class="text-emerald-400">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
+          </span>
+        </div>
+        <p id="kpi-storage" class="mt-3 text-3xl font-semibold text-emerald-300 font-mono">94.2%</p>
+        <p class="mt-1 text-xs text-gray-500">Metadata-only vs. full packet capture</p>
+      </div>
+
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between">
+          <p class="text-xs uppercase tracking-wider text-gray-400">Node Status</p>
+          <span class="text-amber-400">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
+          </span>
+        </div>
+        <p id="kpi-node" class="mt-3 text-3xl font-semibold text-gray-300">--</p>
+        <p id="kpi-node-sub" class="mt-1 text-xs text-gray-500 font-mono">Waiting for first poll</p>
+      </div>
+    </section>
+
+    <!-- Chart + Table -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="card rounded-xl p-5 lg:col-span-1">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-semibold text-white">Protocol Distribution</h2>
+          <span class="text-[11px] text-gray-500 font-mono">live</span>
+        </div>
+        <div class="relative h-64">
+          <canvas id="protocol-chart"></canvas>
+        </div>
+        <ul id="protocol-legend" class="mt-5 grid grid-cols-2 gap-2 text-sm"></ul>
+      </div>
+
+      <div class="card rounded-xl p-5 lg:col-span-2 flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-semibold text-white">Live Packet Metadata Stream</h2>
+          <span id="stream-count" class="text-[11px] text-gray-500 font-mono">0 rows</span>
+        </div>
+        <div class="overflow-auto scroll-thin rounded-lg border border-gray-800 max-h-[26rem]">
+          <table class="min-w-full text-sm">
+            <thead class="bg-gray-900/90 sticky top-0 z-10">
+              <tr class="text-left text-[11px] uppercase tracking-wider text-gray-400">
+                <th class="px-4 py-3 font-medium">Timestamp (UTC)</th>
+                <th class="px-4 py-3 font-medium">Source IP</th>
+                <th class="px-4 py-3 font-medium">Destination IP</th>
+                <th class="px-4 py-3 font-medium">Protocol</th>
+                <th class="px-4 py-3 font-medium text-right">Size (B)</th>
+              </tr>
+            </thead>
+            <tbody id="log-body" class="divide-y divide-gray-800/80 font-mono text-[13px]">
+              <tr><td colspan="5" class="px-4 py-10 text-center text-gray-500 font-sans">Waiting for traffic...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <footer class="mt-8 text-center text-xs text-gray-600">
+      pi-sentinel-interface &middot; polling every <span id="poll-label">2</span>s
+    </footer>
+  </div>
+
+  <script>
+    // ======================================================================
+    // CLOUD-READY CONFIGURATION
+    // Change API_BASE_URL to point at a cloud-hosted backend later,
+    // e.g. "https://sentinel.example.com". No other code needs to change.
+    // ======================================================================
+    const CONFIG = {
+      API_BASE_URL: "http://localhost:5000",   // local default
+      // API_BASE_URL: "https://your-cloud-host.example.com",  // cloud example
+      STATS_ENDPOINT: "/api/v1/dashboard-stats",
+      POLL_INTERVAL_MS: 2000,
+      REQUEST_TIMEOUT_MS: 4000,
+      STORAGE_SAVED_LABEL: "94.2%",
+    };
+
+    const PROTOCOL_STYLE = {
+      TCP:  { color: "#22d3ee", badge: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" },
+      UDP:  { color: "#a78bfa", badge: "bg-violet-500/15 text-violet-300 border-violet-500/30" },
+      ICMP: { color: "#fbbf24", badge: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
+      ARP:  { color: "#34d399", badge: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
+    };
+    const PROTOCOLS = ["TCP", "UDP", "ICMP", "ARP"];
+
+    const el = {
+      total: document.getElementById("kpi-total"),
+      ips: document.getElementById("kpi-ips"),
+      storage: document.getElementById("kpi-storage"),
+      node: document.getElementById("kpi-node"),
+      nodeSub: document.getElementById("kpi-node-sub"),
+      connDot: document.getElementById("conn-dot"),
+      connPing: document.getElementById("conn-ping"),
+      connText: document.getElementById("conn-text"),
+      connSub: document.getElementById("conn-sub"),
+      storageBadge: document.getElementById("storage-badge"),
+      logBody: document.getElementById("log-body"),
+      streamCount: document.getElementById("stream-count"),
+      legend: document.getElementById("protocol-legend"),
+      pollLabel: document.getElementById("poll-label"),
+    };
+
+    el.storage.textContent = CONFIG.STORAGE_SAVED_LABEL;
+    el.pollLabel.textContent = (CONFIG.POLL_INTERVAL_MS / 1000).toString();
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    // ----- Donut chart (with total in the center) -----
+    const centerTextPlugin = {
+      id: "centerText",
+      afterDraw(chart) {
+        const { ctx, chartArea } = chart;
+        if (!chartArea) return;
+        const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+        const x = (chartArea.left + chartArea.right) / 2;
+        const y = (chartArea.top + chartArea.bottom) / 2;
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#f9fafb";
+        ctx.font = "600 22px ui-monospace, SFMono-Regular, Menlo, monospace";
+        ctx.fillText(total.toLocaleString(), x, y - 8);
+        ctx.fillStyle = "#6b7280";
+        ctx.font = "11px Inter, ui-sans-serif, system-ui, sans-serif";
+        ctx.fillText("PACKETS", x, y + 14);
+        ctx.restore();
+      },
+    };
+
+    const protocolChart = new Chart(document.getElementById("protocol-chart"), {
+      type: "doughnut",
+      data: {
+        labels: PROTOCOLS,
+        datasets: [{
+          data: [0, 0, 0, 0],
+          backgroundColor: PROTOCOLS.map((p) => PROTOCOL_STYLE[p].color),
+          borderColor: "#0b1220",
+          borderWidth: 3,
+          hoverOffset: 6,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: "68%",
+        animation: { duration: 500 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: "#111827",
+            borderColor: "#374151",
+            borderWidth: 1,
+            titleColor: "#f9fafb",
+            bodyColor: "#d1d5db",
+            callbacks: {
+              label(ctx) {
+                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                const pct = total ? ((ctx.parsed / total) * 100).toFixed(1) : "0.0";
+                return ` ${ctx.label}: ${ctx.parsed.toLocaleString()} (${pct}%)`;
+              },
+            },
+          },
+        },
+      },
+      plugins: [centerTextPlugin],
+    });
+
+    function renderLegend(distribution) {
+      const total = PROTOCOLS.reduce((sum, p) => sum + (distribution[p] || 0), 0);
+      el.legend.innerHTML = PROTOCOLS.map((p) => {
+        const count = distribution[p] || 0;
+        const pct = total ? ((count / total) * 100).toFixed(1) : "0.0";
+        return `
+          <li class="flex items-center justify-between rounded-lg bg-gray-900/60 border border-gray-800 px-3 py-2">
+            <span class="flex items-center gap-2">
+              <span class="h-2.5 w-2.5 rounded-full" style="background:${PROTOCOL_STYLE[p].color}"></span>
+              <span class="text-gray-300">${p}</span>
+            </span>
+            <span class="font-mono text-xs text-gray-400">${pct}%</span>
+          </li>`;
+      }).join("");
+    }
+    renderLegend({});
+
+    // ----- Connection indicator -----
+    function setConnection(state, detail) {
+      const palette = {
+        ok:      { dot: "bg-emerald-400", ping: "bg-emerald-400", text: "Connected" },
+        error:   { dot: "bg-red-500",     ping: "bg-red-500",     text: "Disconnected" },
+        pending: { dot: "bg-gray-500",    ping: "bg-gray-500",    text: "Connecting..." },
+      }[state];
+      el.connDot.className = "relative inline-flex rounded-full h-3 w-3 " + palette.dot;
+      el.connPing.className = "pulse-ring absolute inline-flex h-full w-full rounded-full opacity-75 " + palette.ping;
+      el.connText.textContent = palette.text;
+      el.connSub.textContent = detail;
+    }
+
+    // ----- Rendering helpers -----
+    function setNodeStatus(status, lastIngest) {
+      const styles = {
+        "Online":        "text-emerald-300",
+        "Offline":       "text-red-400",
+        "Awaiting Data": "text-amber-300",
+      };
+      el.node.className = "mt-3 text-3xl font-semibold " + (styles[status] || "text-gray-300");
+      el.node.textContent = status;
+      if (lastIngest) {
+        el.nodeSub.textContent = "Last batch " + new Date(lastIngest).toLocaleTimeString();
+      } else {
+        el.nodeSub.textContent = "No batches received yet";
+      }
+    }
+
+    let lastTopId = null;
+
+    function renderLogs(logs) {
+      el.streamCount.textContent = logs.length + " rows";
+      if (!logs.length) {
+        el.logBody.innerHTML =
+          '<tr><td colspan="5" class="px-4 py-10 text-center text-gray-500 font-sans">Waiting for traffic...</td></tr>';
+        lastTopId = null;
+        return;
+      }
+
+      const previousTop = lastTopId;
+      el.logBody.innerHTML = logs.map((row) => {
+        const style = PROTOCOL_STYLE[row.protocol] || PROTOCOL_STYLE.TCP;
+        const isNew = previousTop !== null && row.id > previousTop;
+        const time = String(row.timestamp).replace("T", " ").replace("Z", "");
+        return `
+          <tr class="hover:bg-gray-800/40 ${isNew ? "row-new" : ""}">
+            <td class="px-4 py-2 text-gray-400 whitespace-nowrap">${escapeHtml(time)}</td>
+            <td class="px-4 py-2 text-gray-200">${escapeHtml(row.source_ip)}</td>
+            <td class="px-4 py-2 text-gray-200">${escapeHtml(row.destination_ip)}</td>
+            <td class="px-4 py-2">
+              <span class="inline-block px-2 py-0.5 rounded border text-[11px] font-semibold ${style.badge}">${escapeHtml(row.protocol)}</span>
+            </td>
+            <td class="px-4 py-2 text-right text-gray-300">${Number(row.packet_size).toLocaleString()}</td>
+          </tr>`;
+      }).join("");
+      lastTopId = logs[0].id;
+    }
+
+    function applyStats(stats) {
+      el.total.textContent = Number(stats.total_packets || 0).toLocaleString();
+      el.ips.textContent = Number(stats.unique_ips || 0).toLocaleString();
+      setNodeStatus(stats.node_status || "Unknown", stats.last_ingest_at);
+
+      const distribution = stats.protocol_distribution || {};
+      protocolChart.data.datasets[0].data = PROTOCOLS.map((p) => distribution[p] || 0);
+      protocolChart.update();
+      renderLegend(distribution);
+
+      renderLogs(stats.recent_logs || []);
+
+      if (stats.storage_mode) {
+        el.storageBadge.classList.remove("hidden");
+        el.storageBadge.textContent = "storage: " + stats.storage_mode;
+      }
+    }
+
+    // ----- Polling -----
+    let inFlight = false;
+
+    async function poll() {
+      if (inFlight) return;
+      inFlight = true;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT_MS);
+
+      try {
+        const response = await fetch(CONFIG.API_BASE_URL + CONFIG.STATS_ENDPOINT, {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+
+        const stats = await response.json();
+        applyStats(stats);
+        setConnection("ok", new Date().toLocaleTimeString());
+      } catch (error) {
+        const reason = error.name === "AbortError" ? "request timed out" : error.message;
+        setConnection("error", reason + " @ " + CONFIG.API_BASE_URL);
+        setNodeStatus("Offline", null);
+      } finally {
+        clearTimeout(timeout);
+        inFlight = false;
+      }
+    }
+
+    setConnection("pending", CONFIG.API_BASE_URL);
+    poll();
+    setInterval(poll, CONFIG.POLL_INTERVAL_MS);
+  </script>
+</body>
+</html>
